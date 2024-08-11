@@ -51,44 +51,41 @@
 #pragma once
 
 #include <thread>
-#include <ros/ros.h>
-
 #include <boost/thread.hpp>
 
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/viewer.h>
-#include <mujoco_ros/plugin_utils.h>
+#include <rclcpp/rclcpp.hpp>
+#include <std_srvs/srv/empty.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
+#include <tf2_ros/msg/transform_listener.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_ros/msg/static_transform_broadcaster.hpp>
 
-#include <mujoco_ros_msgs/StepAction.h>
-#include <mujoco_ros_msgs/StepGoal.h>
-#include <actionlib/server/simple_action_server.h>
+#include "mujoco_ros/viewer.h"
+#include "mujoco_ros/common_types.h"
+#include "mujoco_ros/plugin_utils.h"
+#include "mujoco_ros/glfw_adapter.h"
+#include "mujoco_ros/glfw_dispatch.h"
 
-#include <mujoco_ros_msgs/SetPause.h>
-#include <mujoco_ros_msgs/Reload.h>
-#include <std_srvs/Empty.h>
-#include <mujoco_ros_msgs/SetBodyState.h>
-#include <mujoco_ros_msgs/GetBodyState.h>
-#include <mujoco_ros_msgs/SetGeomProperties.h>
-#include <mujoco_ros_msgs/GetGeomProperties.h>
-#include <mujoco_ros_msgs/EqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/GetEqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/SetEqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/SetGravity.h>
-#include <mujoco_ros_msgs/GetGravity.h>
-#include <mujoco_ros_msgs/GetStateUint.h>
-#include <mujoco_ros_msgs/GetSimInfo.h>
-#include <mujoco_ros_msgs/SetFloat.h>
-#include <mujoco_ros_msgs/PluginStats.h>
-#include <mujoco_ros_msgs/GetPluginStats.h>
+#include "mujoco_ros_msgs/msg/plugin_stats.hpp"
+#include "mujoco_ros_msgs/msg/equality_constraint_parameters.hpp"
 
-#include <geometry_msgs/TransformStamped.h>
-#include <tf2_ros/static_transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
+#include "mujoco_ros_msgs/srv/reload.hpp"
+#include "mujoco_ros_msgs/srv/set_pause.hpp"
+#include "mujoco_ros_msgs/srv/set_float.hpp"
+#include "mujoco_ros_msgs/srv/set_gravity.hpp"
+#include "mujoco_ros_msgs/srv/set_body_state.hpp"
+#include "mujoco_ros_msgs/srv/set_geom_properties.hpp"
+#include "mujoco_ros_msgs/srv/set_equality_constraint_parameters.hpp"
+#include "mujoco_ros_msgs/srv/get_equality_constraint_parameters.hpp"
+#include "mujoco_ros_msgs/srv/get_geom_properties.hpp"
+#include "mujoco_ros_msgs/srv/get_plugin_stats.hpp"
+#include "mujoco_ros_msgs/srv/get_body_state.hpp"
+#include "mujoco_ros_msgs/srv/get_state_uint.hpp"
+#include "mujoco_ros_msgs/srv/get_gravity.hpp"
+#include "mujoco_ros_msgs/srv/get_sim_info.hpp"
 
-#include <rosgraph_msgs/Clock.h>
+#include "mujoco_ros_msgs/action/step.hpp"
 
-#include <mujoco_ros/glfw_adapter.h>
-#include <mujoco_ros/glfw_dispatch.h>
 
 namespace mujoco_ros {
 
@@ -137,7 +134,7 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(const std::string &admin_hash = std::string());
+	MujocoEnv(std::shared_ptr<rclcpp::Node> node, const std::string &admin_hash = std::string());
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
@@ -221,7 +218,7 @@ public:
 	 *
 	 * @param [in] transform const pointer to transform that will be published.
 	 */
-	void registerStaticTransform(geometry_msgs::TransformStamped &transform);
+	void registerStaticTransform(geometry_msgs::msg::TransformStamped &transform);
 
 	void waitForPhysicsJoin();
 	void waitForEventsJoin();
@@ -294,7 +291,7 @@ protected:
 	std::set<std::pair<int, int>> custom_collisions_;
 
 	// Keep track of static transforms to publish.
-	std::vector<geometry_msgs::TransformStamped> static_transforms_;
+	std::vector<geometry_msgs::msg::TransformStamped> static_transforms_;
 
 	// Central broadcaster for all static transforms
 	tf2_ros::StaticTransformBroadcaster static_broadcaster_;
@@ -311,43 +308,54 @@ protected:
 	std::vector<Viewer *> connected_viewers_;
 
 	void publishSimTime(mjtNum time);
-	ros::Publisher clock_pub_;
-	std::unique_ptr<ros::NodeHandle> nh_;
+	rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
+	std::shared_ptr<rclcpp::Node> node_;
 
 	void runLastStageCbs();
 
 	void notifyGeomChanged(const int geom_id);
 
-	std::vector<ros::ServiceServer> service_servers_;
+	template <typename T>
+	std::vector<rclcpp::Service<T>::SharedPtr> service_servers_;
 	std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
 	bool verifyAdminHash(const std::string &hash);
 
 	void setupServices();
-	bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res);
-	bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-	bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &res);
-	bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-	bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
-	bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp);
-	bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp);
-	bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp);
-	bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
-	                         mujoco_ros_msgs::SetGeomProperties::Response &resp);
-	bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
-	                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
-	bool setEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
-	                                            mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp);
-	bool setEqualityConstraintParameters(const mujoco_ros_msgs::EqualityConstraintParameters &parameters);
-	bool getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
-	                                            mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
-	bool getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstraintParameters &parameters);
-
-	bool getStateUintCB(mujoco_ros_msgs::GetStateUint::Request &req, mujoco_ros_msgs::GetStateUint::Response &resp);
-	bool getSimInfoCB(mujoco_ros_msgs::GetSimInfo::Request &req, mujoco_ros_msgs::GetSimInfo::Response &resp);
-	bool setRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ros_msgs::SetFloat::Response &resp);
-	bool getPluginStatsCB(mujoco_ros_msgs::GetPluginStats::Request &req,
-	                      mujoco_ros_msgs::GetPluginStats::Response &resp);
+	bool setPauseCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetPause::Request> req, 
+					std::shared_ptr<mujoco_ros_msgs::srv::SetPause::Response> resp);
+	bool shutdownCB(const std::shared_ptr<std_srvs::srv::Empty::Request> req, 
+					std::shared_ptr<std_srvs::srv::Empty::Response> resp);
+	bool reloadCB(const std::shared_ptr<mujoco_ros_msgs::srv::Reload::Request> req, 
+				  std::shared_ptr<mujoco_ros_msgs::srv::Reload::Response> resp);
+	bool resetCB(const std::shared_ptr<std_srvs::srv::Empty::Request> req, 
+				 std::shared_ptr<std_srvs::srv::Empty::Response> resp);
+	bool setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBodyState::Request> req,
+					    std::shared_ptr<mujoco_ros_msgs::srv::SetBodyState::Response> resp);
+	bool getBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetBodyState::Request> req,
+						std::shared_ptr<mujoco_ros_msgs::srv::GetBodyState::Response> resp);
+	bool setGravityCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetGravity::Request> req, 
+					  std::shared_ptr<mujoco_ros_msgs::srv::SetGravity::Response> resp);
+	bool getGravityCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetGravity::Request> req, 
+					  std::shared_ptr<mujoco_ros_msgs::srv::GetGravity::Response> resp);
+	bool setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetGeomProperties::Request> req,
+	                         std::shared_ptr<mujoco_ros_msgs::srv::SetGeomProperties::Response> resp);
+	bool getGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetGeomProperties::Request> req,
+	                         std::shared_ptr<mujoco_ros_msgs::srv::GetGeomProperties::Response> resp);
+	bool setEqualityConstraintParametersArrayCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Request> req,
+	                                            std::shared_ptr<mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response> resp);
+	bool getEqualityConstraintParametersArrayCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Request> req,
+	                                            std::shared_ptr<mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response> resp);
+	bool getStateUintCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetStateUint::Request> req, 
+					    std::shared_ptr<mujoco_ros_msgs::srv::GetStateUint::Response> resp);
+	bool getSimInfoCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetSimInfo::Request> req, 
+					  std::shared_ptr<mujoco_ros_msgs::srv::GetSimInfo::Response> resp);
+	bool setRTFactorCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetFloat::Request> req, 
+					   std::shared_ptr<mujoco_ros_msgs::srv::SetFloat::Response> resp);
+	bool getPluginStatsCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetPluginStats::Request> req,
+	                      std::shared_ptr<mujoco_ros_msgs::srv::GetPluginStats::Response> resp);
+	bool setEqualityConstraintParameters(const mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters);
+	bool getEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters);
 
 	// Action calls
 	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);

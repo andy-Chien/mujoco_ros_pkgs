@@ -65,7 +65,8 @@ int MaybeGlfwInit()
 
 MujocoEnv *MujocoEnv::instance = nullptr;
 
-MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
+MujocoEnv::MujocoEnv(std::shared_ptr<rclcpp::Node> node, const std::string &admin_hash /* = std::string()*/)
+: node_(node)
 {
 	if (!ros::param::get("/use_sim_time", settings_.use_sim_time)) {
 		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
@@ -121,7 +122,7 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	}
 
 	if (settings_.use_sim_time) {
-		clock_pub_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+		clock_pub_ = node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 1);
 		publishSimTime(mjtNum(0));
 	}
 
@@ -187,7 +188,7 @@ void MujocoEnv::registerCollisionFunction(int geom_type1, int geom_type2, mjfCol
 	mjCOLLISIONFUNC[geom_type1][geom_type2] = collision_cb;
 }
 
-void MujocoEnv::registerStaticTransform(geometry_msgs::TransformStamped &transform)
+void MujocoEnv::registerStaticTransform(geometry_msgs::msg::TransformStamped &transform)
 {
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Registering static transform for frame " << transform.child_frame_id);
 	for (auto it = static_transforms_.begin(); it != static_transforms_.end();) {
@@ -519,13 +520,15 @@ void MujocoEnv::publishSimTime(mjtNum time)
 	// This is the fastes option for intra-node time updates
 	// however, together with non-blocking publish it breaks stuff
 	// ros::Time::setNow(ros::Time(time));
-	rosgraph_msgs::ClockPtr ros_time(new rosgraph_msgs::Clock);
-	ros_time->clock.fromSec(time);
+	const int32_t sec = (int32_t)time;
+	const uint32_t nsec = (uint32_t)(double(time - seconds) * 1000000000);
+	auto ros_time = rosgraph_msgs::msg::Clock();
+	ros_time.clock = rclcpp::Time(sec, nsec, rcl_clock_type_t::RCL_ROS_TIME);
 	clock_pub_.publish(ros_time);
 	// Current workaround to simulate a blocking time update
-	while (ros::Time::now() < ros::Time(time)) {
-		std::this_thread::yield();
-	}
+	// while (ros::Time::now() < ros::Time(time)) {
+	// 	std::this_thread::yield();
+	// }
 }
 
 bool MujocoEnv::togglePaused(bool paused, const std::string &admin_hash /*= std::string*/)
