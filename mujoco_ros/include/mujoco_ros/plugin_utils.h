@@ -35,7 +35,7 @@
 /* Authors: David P. Leins */
 
 #pragma once
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <mujoco_ros/common_types.h>
 
 #include <pluginlib/class_loader.h>

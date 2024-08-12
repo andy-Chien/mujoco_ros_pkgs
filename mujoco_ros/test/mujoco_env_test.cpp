@@ -42,7 +42,7 @@
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/util.h>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <chrono>
 
 int main(int argc, char **argv)

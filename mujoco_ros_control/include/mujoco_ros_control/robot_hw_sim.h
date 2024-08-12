@@ -38,7 +38,7 @@
 
 #pragma once
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <hardware_interface/robot_hw.h>
 #include <transmission_interface/transmission_info.h>
 #include <urdf/model.h>

@@ -46,7 +46,7 @@
 #include <joint_limits_interface/joint_limits_urdf.h>
 
 // ros
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <angles/angles.h>
 #include <pluginlib/class_list_macros.h>
 

@@ -38,7 +38,7 @@
 
 #include <mujoco/mujoco.h>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <image_transport/image_transport.h>
 
 #include <GLFW/glfw3.h>

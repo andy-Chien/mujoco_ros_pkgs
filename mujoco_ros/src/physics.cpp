@@ -34,7 +34,7 @@
 
 /* Authors: David P. Leins */
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <mujoco_ros/mujoco_env.h>
 

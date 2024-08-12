@@ -54,6 +54,8 @@
 #include <boost/thread.hpp>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+
 #include <std_srvs/srv/empty.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
 #include <tf2_ros/msg/transform_listener.hpp>

@@ -37,13 +37,13 @@
 /* Authors: David P. Leins */
 
 #include <mujoco_ros/offscreen_camera.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/util.h>
 
 #include <sensor_msgs/image_encodings.h>
-#include <sensor_msgs/Image.h>
+#include <sensor_msgs/msg/image.hpp>
 
 namespace mujoco_ros::rendering {
 

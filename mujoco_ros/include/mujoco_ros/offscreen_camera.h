@@ -40,13 +40,13 @@
 
 #include <mujoco_ros/common_types.h>
 
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/TransformStamped.h>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <camera_info_manager/camera_info_manager.h>
 
 #include <tf2_ros/transform_listener.h>
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+// #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
 namespace mujoco_ros::rendering {
 

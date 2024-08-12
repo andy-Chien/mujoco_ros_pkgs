@@ -36,24 +36,23 @@
 
 #include <gtest/gtest.h>
 
-#include <actionlib/client/simple_action_client.h>
-#include <mujoco_ros_msgs/StepAction.h>
-#include <mujoco_ros_msgs/StepGoal.h>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <mujoco_ros_msgs/action/Step.hpp>
 
-#include <mujoco_ros_msgs/SetPause.h>
-#include <mujoco_ros_msgs/SetBodyState.h>
-#include <mujoco_ros_msgs/GetBodyState.h>
-#include <mujoco_ros_msgs/SetGeomProperties.h>
-#include <mujoco_ros_msgs/GeomType.h>
+#include <mujoco_ros_msgs/srv/set_pause.hpp>
+#include <mujoco_ros_msgs/srv/set_body_state.hpp>
+#include <mujoco_ros_msgs/srv/set_geom_properties.hpp>
+#include <mujoco_ros_msgs/srv/get_body_state.hpp>
+#include <mujoco_ros_msgs/msg/geom_type.hpp>
 
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TwistStamped.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include "mujoco_env_fixture.h"
 
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/util.h>
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 int main(int argc, char **argv)
 {

@@ -35,7 +35,7 @@
 /* Authors: David P. Leins */
 
 #include <gtest/gtest.h>
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <ros/package.h>
 #include <mujoco_ros/mujoco_env.h>
 #include "test_util.h"

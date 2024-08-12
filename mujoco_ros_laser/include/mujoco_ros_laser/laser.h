@@ -42,7 +42,7 @@
 
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <random>
 

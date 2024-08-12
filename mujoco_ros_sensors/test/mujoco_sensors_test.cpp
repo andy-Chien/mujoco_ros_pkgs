@@ -51,7 +51,7 @@
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <ros/package.h>
 #include <chrono>
 #include <thread>

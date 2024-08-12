@@ -44,7 +44,7 @@
 #include <string>
 #include <memory> // std::unique_ptr
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <pluginlib/class_loader.h>
 #include <std_msgs/Bool.h>
 
