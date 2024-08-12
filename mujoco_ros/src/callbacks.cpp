@@ -100,48 +100,81 @@ void MujocoEnv::setupServices()
 		    return true;
 	    }));
 
-		
-
-	action_step_ = std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs_::action::Step>>(
-	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, boost::placeholders::_1), false);
-	action_step_->start();
+    using namespace std::placeholders;
+    action_step_ = rclcpp_action::create_server<mujoco_ros_msgs_::action::Step>(
+        node_,
+        "step",
+        std::bind(&MujocoEnv::action_step_handle_goal, this, _1, _2),
+        std::bind(&MujocoEnv::action_step_handle_cancel, this, _1),
+        std::bind(&MujocoEnv::action_step_handle_accepted, this, _1)
+    );
 }
 
-void MujocoEnv::onStepGoal(const mujoco_ros_msgs_::action::StepGoalConstPtr &goal)
+using StepGoalHandle = rclcpp_action::ServerGoalHandle<mujoco_ros_msgs_::action::Step>;
+rclcpp_action::GoalResponse MujocoEnv::action_step_handle_goal(
+const rclcpp_action::GoalUUID & uuid,
+std::shared_ptr<const mujoco_ros_msgs_::action::Step::Goal> goal)
 {
-	mujoco_ros_msgs_::action::StepResult result;
-
-	if (settings_.env_steps_request.load() > 0 || settings_.run.load()) {
-		ROS_WARN("Simulation is currently unpaused. Stepping makes no sense right now.");
-		result.success = false;
-		action_step_->setPreempted(result);
-		return;
+	RCLCPP_INFO(node_->get_logger(), "Received goal request with order %d", goal->order);
+	(void)uuid;
+    if (settings_.env_steps_request.load() > 0 || settings_.run.load()) {
+		RCLCPP_WARN(node_->get_logger(), 
+            "Simulation is currently unpaused. Stepping makes no sense right now.");
+		return rclcpp_action::GoalResponse::REJECT;
 	}
+	return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
 
-	mujoco_ros_msgs_::action::StepFeedback feedback;
+rclcpp_action::CancelResponse MujocoEnv::action_step_handle_cancel(
+const std::shared_ptr<StepGoalHandle> goal_handle)
+{
+    RCLCPP_INFO(node_->get_logger(), "Received request to cancel simulation step action goal");
+    (void)goal_handle;
+    settings_.env_steps_request.store(0);
+    return rclcpp_action::CancelResponse::ACCEPT;
+}
 
-	feedback.steps_left = goal->num_steps + util::as_unsigned(settings_.env_steps_request.load());
+void MujocoEnv::action_step_handle_accepted(const std::shared_ptr<StepGoalHandle> goal_handle)
+{
+    using namespace std::placeholders;
+    // this needs to return quickly to avoid blocking the executor, so spin up a new thread
+    std::thread{std::bind(&MujocoEnv::action_step_execute, this, _1), goal_handle}.detach();
+}
+
+void MujocoEnv::action_step_execute(const std::shared_ptr<StepGoalHandle> goal_handle)
+{
+    RCLCPP_INFO(node_->get_logger(), "Executing simulation step action goal");
+    const auto goal = goal_handle->get_goal();
+    auto result = std::make_shared<mujoco_ros_msgs_::action::Step::Result>();
+    auto feedback = std::make_shared<mujoco_ros_msgs_::action::Step::Feedback>();
+	feedback->steps_left = goal->num_steps + util::as_unsigned(settings_.env_steps_request.load());
 	settings_.env_steps_request.store(settings_.env_steps_request.load() + goal->num_steps);
 
-	result.success = true;
+	result->success = true;
 	while (settings_.env_steps_request.load() > 0) {
-		if (action_step_->isPreemptRequested() || !ros::ok() || settings_.exit_request.load() > 0 ||
+		if (goal_handle->is_canceling() || !rclcpp::ok() || settings_.exit_request.load() > 0 ||
 		    settings_.load_request.load() > 0 || settings_.reset_request.load() > 0) {
-			ROS_WARN_STREAM_NAMED("mujoco", "Simulation step action preempted");
-			result.success = false;
-			action_step_->setPreempted(result);
+			RCLCPP_WARN(node_->get_logger(), "Simulation step action goal canceled");
+			result->success = false;
 			settings_.env_steps_request.store(0);
-			break;
+            goal_handle->canceled(result);
+			return;
 		}
 
-		feedback.steps_left = util::as_unsigned(settings_.env_steps_request.load());
-		action_step_->publishFeedback(feedback);
+		feedback->steps_left = util::as_unsigned(settings_.env_steps_request.load());
+        goal_handle->publish_feedback(feedback);
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	feedback.steps_left = util::as_unsigned(settings_.env_steps_request.load());
-	action_step_->publishFeedback(feedback);
-	action_step_->setSucceeded(result);
+	feedback->steps_left = util::as_unsigned(settings_.env_steps_request.load());
+    goal_handle->publish_feedback(feedback);
+
+    // Check if goal is done
+    if (rclcpp::ok()) {
+        result->sequence = sequence;
+        goal_handle->succeed(result);
+        RCLCPP_INFO(node_->get_logger(), "Goal succeeded");
+    }
 }
 
 void MujocoEnv::runControlCbs()

@@ -317,7 +317,7 @@ protected:
 
 	template <typename T>
 	std::vector<rclcpp::Service<T>::SharedPtr> service_servers_;
-	std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
+	rclcpp_action::Server<mujoco_ros_msgs::action::Step>::SharedPtr action_step_;
 
 	bool verifyAdminHash(const std::string &hash);
 
@@ -358,7 +358,13 @@ protected:
 	bool getEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters);
 
 	// Action calls
-	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
+	using StepGoalHandle = rclcpp_action::ServerGoalHandle<mujoco_ros_msgs_::action::Step>;
+	rclcpp_action::GoalResponse action_step_handle_goal(const rclcpp_action::GoalUUID & uuid,
+		std::shared_ptr<const mujoco_ros_msgs_::action::Step::Goal> goal);
+	rclcpp_action::CancelResponse action_step_handle_cancel(
+		const std::shared_ptr<StepGoalHandle> goal_handle);
+	void action_step_handle_accepted(const std::shared_ptr<StepGoalHandle> goal_handle);
+	void action_step_execute(const std::shared_ptr<StepGoalHandle> goal_handle);
 
 	void resetSim();
 
