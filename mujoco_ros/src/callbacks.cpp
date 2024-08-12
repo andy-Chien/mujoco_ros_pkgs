@@ -49,11 +49,11 @@ namespace mju = ::mujoco::sample_util;
 bool MujocoEnv::verifyAdminHash(const std::string &hash)
 {
 	if (settings_.eval_mode) {
-		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		RCLCPP_DEBUG(node_->get_logger(), "Evaluation mode is active. Checking hash validity");
 		if (settings_.admin_hash != hash) {
 			return false;
 		}
-		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+		RCLCPP_DEBUG(node_->get_logger(), "Hash valid, request authorized.");
 	}
 	return true;
 }
@@ -95,19 +95,19 @@ void MujocoEnv::setupServices()
 		"get_gravity", &MujocoEnv::getGravityCB));
 	service_servers_.emplace_back(node_->create_service<std_srvs::srv::Empty>(
 	    "load_initial_joint_states", [&](const auto /*&req*/, auto /*&resp*/) {
-		    std::lock_guard<std::recursive_mutex> lock(physics_thread_mutex_);
-		    loadInitialJointStates();
-		    return true;
-	    }));
+			std::lock_guard<std::recursive_mutex> lock(physics_thread_mutex_);
+			loadInitialJointStates();
+			return true;
+	}));
 
-    using namespace std::placeholders;
-    action_step_ = rclcpp_action::create_server<mujoco_ros_msgs_::action::Step>(
-        node_,
-        "step",
-        std::bind(&MujocoEnv::action_step_handle_goal, this, _1, _2),
-        std::bind(&MujocoEnv::action_step_handle_cancel, this, _1),
-        std::bind(&MujocoEnv::action_step_handle_accepted, this, _1)
-    );
+	using namespace std::placeholders;
+	action_step_ = rclcpp_action::create_server<mujoco_ros_msgs_::action::Step>(
+		node_,
+		"step",
+		std::bind(&MujocoEnv::action_step_handle_goal, this, _1, _2),
+		std::bind(&MujocoEnv::action_step_handle_cancel, this, _1),
+		std::bind(&MujocoEnv::action_step_handle_accepted, this, _1)
+	);
 }
 
 using StepGoalHandle = rclcpp_action::ServerGoalHandle<mujoco_ros_msgs_::action::Step>;
@@ -117,9 +117,9 @@ std::shared_ptr<const mujoco_ros_msgs_::action::Step::Goal> goal)
 {
 	RCLCPP_INFO(node_->get_logger(), "Received goal request with order %d", goal->order);
 	(void)uuid;
-    if (settings_.env_steps_request.load() > 0 || settings_.run.load()) {
+	if (settings_.env_steps_request.load() > 0 || settings_.run.load()) {
 		RCLCPP_WARN(node_->get_logger(), 
-            "Simulation is currently unpaused. Stepping makes no sense right now.");
+			"Simulation is currently unpaused. Stepping makes no sense right now.");
 		return rclcpp_action::GoalResponse::REJECT;
 	}
 	return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -128,53 +128,53 @@ std::shared_ptr<const mujoco_ros_msgs_::action::Step::Goal> goal)
 rclcpp_action::CancelResponse MujocoEnv::action_step_handle_cancel(
 const std::shared_ptr<StepGoalHandle> goal_handle)
 {
-    RCLCPP_INFO(node_->get_logger(), "Received request to cancel simulation step action goal");
-    (void)goal_handle;
-    settings_.env_steps_request.store(0);
-    return rclcpp_action::CancelResponse::ACCEPT;
+	RCLCPP_INFO(node_->get_logger(), "Received request to cancel simulation step action goal");
+	(void)goal_handle;
+	settings_.env_steps_request.store(0);
+	return rclcpp_action::CancelResponse::ACCEPT;
 }
 
 void MujocoEnv::action_step_handle_accepted(const std::shared_ptr<StepGoalHandle> goal_handle)
 {
-    using namespace std::placeholders;
-    // this needs to return quickly to avoid blocking the executor, so spin up a new thread
-    std::thread{std::bind(&MujocoEnv::action_step_execute, this, _1), goal_handle}.detach();
+	using namespace std::placeholders;
+	// this needs to return quickly to avoid blocking the executor, so spin up a new thread
+	std::thread{std::bind(&MujocoEnv::action_step_execute, this, _1), goal_handle}.detach();
 }
 
 void MujocoEnv::action_step_execute(const std::shared_ptr<StepGoalHandle> goal_handle)
 {
-    RCLCPP_INFO(node_->get_logger(), "Executing simulation step action goal");
-    const auto goal = goal_handle->get_goal();
-    auto result = std::make_shared<mujoco_ros_msgs_::action::Step::Result>();
-    auto feedback = std::make_shared<mujoco_ros_msgs_::action::Step::Feedback>();
+	RCLCPP_INFO(node_->get_logger(), "Executing simulation step action goal");
+	const auto goal = goal_handle->get_goal();
+	auto result = std::make_shared<mujoco_ros_msgs_::action::Step::Result>();
+	auto feedback = std::make_shared<mujoco_ros_msgs_::action::Step::Feedback>();
 	feedback->steps_left = goal->num_steps + util::as_unsigned(settings_.env_steps_request.load());
 	settings_.env_steps_request.store(settings_.env_steps_request.load() + goal->num_steps);
 
 	result->success = true;
 	while (settings_.env_steps_request.load() > 0) {
 		if (goal_handle->is_canceling() || !rclcpp::ok() || settings_.exit_request.load() > 0 ||
-		    settings_.load_request.load() > 0 || settings_.reset_request.load() > 0) {
+			settings_.load_request.load() > 0 || settings_.reset_request.load() > 0) {
 			RCLCPP_WARN(node_->get_logger(), "Simulation step action goal canceled");
 			result->success = false;
 			settings_.env_steps_request.store(0);
-            goal_handle->canceled(result);
+			goal_handle->canceled(result);
 			return;
 		}
 
 		feedback->steps_left = util::as_unsigned(settings_.env_steps_request.load());
-        goal_handle->publish_feedback(feedback);
+		goal_handle->publish_feedback(feedback);
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
 	feedback->steps_left = util::as_unsigned(settings_.env_steps_request.load());
-    goal_handle->publish_feedback(feedback);
+	goal_handle->publish_feedback(feedback);
 
-    // Check if goal is done
-    if (rclcpp::ok()) {
-        result->sequence = sequence;
-        goal_handle->succeed(result);
-        RCLCPP_INFO(node_->get_logger(), "Goal succeeded");
-    }
+	// Check if goal is done
+	if (rclcpp::ok()) {
+		result->sequence = sequence;
+		goal_handle->succeed(result);
+		RCLCPP_INFO(node_->get_logger(), "Goal succeeded");
+	}
 }
 
 void MujocoEnv::runControlCbs()
@@ -208,9 +208,9 @@ void MujocoEnv::runLastStageCbs()
 bool MujocoEnv::setPauseCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetPause::Request> req, std::shared_ptr<mujoco_ros_msgs::srv::SetPause::Response> resp)
 {
 	if (req->paused) {
-		ROS_DEBUG("Requested pause via ROS service");
+		RCLCPP_DEBUG(node_->get_logger(), "Requested pause via ROS service");
 	} else {
-		ROS_DEBUG("Requested unpause via ROS service");
+		RCLCPP_DEBUG(node_->get_logger(), "Requested unpause via ROS service");
 	}
 	resp->success = togglePaused(req->paused, req->admin_hash);
 	return true;
@@ -218,17 +218,17 @@ bool MujocoEnv::setPauseCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetPause:
 
 bool MujocoEnv::shutdownCB(const std::shared_ptr<std_srvs::srv::Empty::Request> /*req*/, std::shared_ptr<std_srvs::srv::Empty::Response> /*resp*/)
 {
-	ROS_DEBUG("Shutdown requested");
+	RCLCPP_DEBUG(node_->get_logger(), "Shutdown requested");
 	settings_.exit_request.store(1);
 	return true;
 }
 
 bool MujocoEnv::reloadCB(const std::shared_ptr<mujoco_ros_msgs::srv::Reload::Request> req, std::shared_ptr<mujoco_ros_msgs::srv::Reload::Response> resp)
 {
-	ROS_DEBUG("Requested reload via ROS service");
+	RCLCPP_DEBUG(node_->get_logger(), "Requested reload via ROS service");
 
 	if (req->model.size() > kMaxFilenameLength) {
-		ROS_ERROR_STREAM("Model string too long. Max length: "
+		RCLCPP_ERROR_STREAM(node_->get_logger(), "Model string too long. Max length: "
 		                 << kMaxFilenameLength << " (got " << req->model.size()
 		                 << "); Consider compiling with a larger value for kMaxFilenameLength");
 		resp->success        = false;
@@ -251,7 +251,7 @@ bool MujocoEnv::reloadCB(const std::shared_ptr<mujoco_ros_msgs::srv::Reload::Req
 
 bool MujocoEnv::resetCB(const std::shared_ptr<std_srvs::srv::Empty::Request> /*req*/, std::shared_ptr<std_srvs::srv::Empty::Response> /*resp*/)
 {
-	ROS_DEBUG("Reset requested");
+	RCLCPP_DEBUG(node_->get_logger(), "Reset requested");
 	settings_.reset_request.store(1);
 	return true;
 }
@@ -260,7 +260,7 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
                                std::shared_ptr<mujoco_ros_msgs::srv::SetBodyState::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set body state!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to set body state!");
 		resp->success = false;
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to set body state!");
@@ -272,34 +272,34 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 
 	int body_id = mj_name2id(model_.get(), mjOBJ_BODY, req->state.name.c_str());
 	if (body_id == -1) {
-		ROS_WARN_STREAM("Could not find model (mujoco body) with name " << req->state.name << ". Trying to find geom...");
+		RCLCPP_WARN_STREAM(node_->get_logger(), "Could not find model (mujoco body) with name " << req->state.name << ". Trying to find geom...");
 		int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req->state.name.c_str());
 		if (geom_id == -1) {
 			std::string error_msg("Could not find model (not body nor geom) with name " + req->state.name);
-			ROS_WARN_STREAM(error_msg);
+			RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 			resp->status_message = error_msg;
 			resp->success        = false;
 			return true;
 		}
 		body_id = model_->geom_bodyid[geom_id];
-		ROS_WARN_STREAM("found body named '" << mj_id2name(model_.get(), mjOBJ_BODY, body_id) << "' as parent of geom '"
+		RCLCPP_WARN_STREAM(node_->get_logger(), "found body named '" << mj_id2name(model_.get(), mjOBJ_BODY, body_id) << "' as parent of geom '"
 		                                     << req->state.name << "'");
 	}
 
 	if (req->set_mass) {
 		std::lock_guard<std::recursive_mutex> lk_sim(physics_thread_mutex_);
-		ROS_DEBUG_STREAM("\tReplacing mass '" << model_->body_mass[body_id] << "' with new mass '" << req->state.mass
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "\tReplacing mass '" << model_->body_mass[body_id] << "' with new mass '" << req->state.mass
 		                                      << "'");
 		model_->body_mass[body_id] = req->state.mass;
 
 		std::lock_guard<std::mutex> lk_render(offscreen_.render_mutex); // Prevent rendering the reset to q0
 		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
-		ROS_DEBUG("Copied current qpos state");
+		RCLCPP_DEBUG(node_->get_logger(), "Copied current qpos state");
 		mj_setConst(model_.get(), data_.get());
-		ROS_DEBUG("Reset constants because of mass change");
+		RCLCPP_DEBUG(node_->get_logger(), "Reset constants because of mass change");
 		mju_copy(data_->qpos, qpos_tmp, model_->nq);
-		ROS_DEBUG("Copied qpos state back to data");
+		RCLCPP_DEBUG(node_->get_logger(), "Copied qpos state back to data");
 	}
 
 	int jnt_adr     = model_->body_jntadr[body_id];
@@ -314,20 +314,20 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 	if (req->set_pose || req->set_twist || req->reset_qpos) {
 		if (jnt_adr == -1) { // Check if body has joints
 			std::string error_msg("Body has no joints, cannot move body!");
-			ROS_WARN_STREAM(error_msg);
+			RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 			full_error_msg += error_msg + '\n';
 			resp->success = false;
 		} else if (jnt_type != mjJNT_FREE) { // Only freejoints can be moved
 			std::string error_msg("Body " + req->state.name +
 			                      " has no joint of type 'freetype'. This service call does not support any other types!");
-			ROS_WARN_STREAM(error_msg);
+			RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 			full_error_msg += error_msg + '\n';
 			resp->success = false;
 		} else if (num_jnt > 1) {
 			std::string error_msg("Body " + req->state.name + " has more than one joint ('" +
 			                      std::to_string(model_->body_jntnum[body_id]) +
 			                      "'), pose/twist changes to bodies with more than one joint are not supported!");
-			ROS_WARN_STREAM(error_msg);
+			RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 			full_error_msg += error_msg + '\n';
 			resp->success = false;
 		} else {
@@ -342,7 +342,7 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 					try {
 						tf_bufferPtr_->transform<geometry_msgs::msg::PoseStamped>(req->state.pose, target_pose, "world");
 					} catch (tf2::TransformException &ex) {
-						ROS_WARN_STREAM(ex.what());
+						RCLCPP_WARN_STREAM(node_->get_logger(), ex.what());
 						full_error_msg +=
 						    "Could not transform frame '" + req->state.pose.header.frame_id + "' to frame world" + '\n';
 						resp->success = false;
@@ -357,7 +357,7 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 						                target_pose.pose.orientation.y, target_pose.pose.orientation.z };
 					mju_normalize4(quat);
 
-					ROS_DEBUG_STREAM("Setting body pose to "
+					RCLCPP_DEBUG_STREAM(node_->get_logger(), "Setting body pose to "
 					                 << target_pose.pose.position.x << ", " << target_pose.pose.position.y << ", "
 					                 << target_pose.pose.position.z << ", " << quat[0] << ", " << quat[1] << ", " << quat[2]
 					                 << ", " << quat[3] << " (xyz wxyz)");
@@ -377,9 +377,9 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 
 			if (req->reset_qpos && num_jnt > 0) {
 				int num_dofs = 7; // Is always 7 because the joint is restricted to one joint of type freejoint
-				ROS_WARN_COND(req->set_pose,
+				RCLCPP_WARN_EXPRESSION(node_->get_logger(), req->set_pose,
 				              "set_pose and reset_qpos were both passed. reset_qpos will overwrite the custom pose!");
-				ROS_DEBUG("Resetting body qpos");
+				RCLCPP_DEBUG(node_->get_logger(), "Resetting body qpos");
 				mju_copy(data_->qpos + model_->jnt_qposadr[jnt_adr], model_->qpos0 + model_->jnt_qposadr[jnt_adr],
 				         num_dofs);
 				if (!req->set_twist) {
@@ -393,11 +393,11 @@ bool MujocoEnv::setBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetBo
 				// Only pose can be transformed. Twist will be ignored!
 				if (!req_state_twist.header.frame_id.empty() && req_state_twist.header.frame_id != "world") {
 					std::string error_msg("Transforming twists from other frames is not supported! Not setting twist.");
-					ROS_WARN_STREAM(error_msg);
+					RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 					full_error_msg += error_msg + '\n';
 					resp->success = false;
 				} else {
-					ROS_DEBUG_STREAM("Setting body twist to "
+					RCLCPP_DEBUG_STREAM(node_->get_logger(), "Setting body twist to "
 					                 << req_state_twist.twist.linear.x << ", " << req_state_twist.twist.linear.y << ", "
 					                 << req_state_twist.twist.linear.z << ", " << req_state_twist.twist.angular.x << ", "
 					                 << req_state_twist.twist.angular.y << ", " << req_state_twist.twist.angular.z
@@ -421,7 +421,7 @@ bool MujocoEnv::getBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetBo
                                std::shared_ptr<mujoco_ros_msgs::srv::GetBodyState::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get body state!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to get body state!");
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to get body state!");
 		resp->success = false;
@@ -432,17 +432,17 @@ bool MujocoEnv::getBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetBo
 
 	int body_id = mj_name2id(model_.get(), mjOBJ_BODY, req->name.c_str());
 	if (body_id == -1) {
-		ROS_WARN_STREAM("Could not find model (mujoco body) with name " << req->name << ". Trying to find geom...");
+		RCLCPP_WARN_STREAM(node_->get_logger(), "Could not find model (mujoco body) with name " << req->name << ". Trying to find geom...");
 		int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req->name.c_str());
 		if (geom_id == -1) {
 			std::string error_msg("Could not find model (not body nor geom) with name " + req->name);
-			ROS_WARN_STREAM(error_msg);
+			RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 			resp->status_message = error_msg;
 			resp->success        = false;
 			return true;
 		}
 		body_id = model_->geom_bodyid[geom_id];
-		ROS_WARN_STREAM("found body named '" << mj_id2name(model_.get(), mjOBJ_BODY, body_id) << "' as parent of geom '"
+		RCLCPP_WARN_STREAM(node_->get_logger(), "found body named '" << mj_id2name(model_.get(), mjOBJ_BODY, body_id) << "' as parent of geom '"
 		                                     << req->name << "'");
 	}
 
@@ -506,7 +506,7 @@ bool MujocoEnv::getBodyStateCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetBo
 bool MujocoEnv::setGravityCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetGravity::Request> req, std::shared_ptr<mujoco_ros_msgs::srv::SetGravity::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to set gravity!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to set gravity!");
 		resp->status_message = static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to set gravity!");
 		resp->success        = false;
 		return true;
@@ -524,7 +524,7 @@ bool MujocoEnv::setGravityCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetGrav
 bool MujocoEnv::getGravityCB(const std::shared_ptr<mujoco_ros_msgs::srv::GetGravity::Request> req, std::shared_ptr<mujoco_ros_msgs::srv::GetGravity::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to get gravity!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to get gravity!");
 		resp->status_message = static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to get gravity!");
 		resp->success        = false;
 		return true;
@@ -543,7 +543,7 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
                                     std::shared_ptr<mujoco_ros_msgs::srv::SetGeomProperties::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to set geom properties!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to set geom properties!");
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to set geom properties!");
 		resp->success = false;
@@ -553,7 +553,7 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 	int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req->properties.name.c_str());
 	if (geom_id == -1) {
 		std::string error_msg("Could not find model (mujoco geom) with name " + req->properties.name);
-		ROS_WARN_STREAM(error_msg);
+		RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 		resp->status_message = error_msg;
 		resp->success        = false;
 		return true;
@@ -564,14 +564,14 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 	// Lock mutex to prevent updating the body while a step is performed
 	std::lock_guard<std::recursive_mutex> lk_sim(physics_thread_mutex_);
 
-	ROS_DEBUG_STREAM("Changing properties of geom '" << req->properties.name.c_str() << "' ...");
+	RCLCPP_DEBUG_STREAM(node_->get_logger(), "Changing properties of geom '" << req->properties.name.c_str() << "' ...");
 	if (req->set_mass) {
-		ROS_DEBUG_STREAM("\tReplacing mass '" << model_->body_mass[body_id] << "' with new mass '"
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "\tReplacing mass '" << model_->body_mass[body_id] << "' with new mass '"
 		                                      << req->properties.body_mass << "'");
 		model_->body_mass[body_id] = req->properties.body_mass;
 	}
 	if (req->set_friction) {
-		ROS_DEBUG_STREAM("\tReplacing friction '"
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "\tReplacing friction '"
 		                 << model_->geom_friction[geom_id * 3] << ", " << model_->geom_friction[geom_id * 3 + 1] << ", "
 		                 << model_->geom_friction[geom_id * 3 + 2] << "' with new mass '" << req->properties.friction_slide
 		                 << ", " << req->properties.friction_spin << ", " << req->properties.friction_roll << "'");
@@ -580,7 +580,7 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 		model_->geom_friction[geom_id * 3 + 2] = req->properties.friction_roll;
 	}
 	if (req->set_type) {
-		ROS_DEBUG_STREAM("\tReplacing type '" << model_->geom_type[geom_id] << "' with new type '" << req->properties.type
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "\tReplacing type '" << model_->geom_type[geom_id] << "' with new type '" << req->properties.type
 		                                      << "'");
 		model_->geom_type[geom_id] = req->properties.type.value;
 	}
@@ -588,11 +588,11 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 	if (req->set_size) {
 		if (static_cast<mjtNum>(req->properties.size_0 * req->properties.size_1 * req->properties.size_2) >
 		    model_->geom_size[geom_id * 3] * model_->geom_size[geom_id * 3 + 1] * model_->geom_size[geom_id * 3 + 2]) {
-			ROS_WARN_STREAM("New geom size is bigger than the old size. AABBs are not recomputed, this might cause "
+			RCLCPP_WARN_STREAM(node_->get_logger(), "New geom size is bigger than the old size. AABBs are not recomputed, this might cause "
 			                "incorrect collisions!");
 		}
 
-		ROS_DEBUG_STREAM("\tReplacing size '"
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "\tReplacing size '"
 		                 << model_->geom_size[geom_id * 3] << ", " << model_->geom_size[geom_id * 3 + 1] << ", "
 		                 << model_->geom_size[geom_id * 3 + 2] << "' with new size '" << req->properties.size_0 << ", "
 		                 << req->properties.size_1 << ", " << req->properties.size_2 << "'");
@@ -608,11 +608,11 @@ bool MujocoEnv::setGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 
 		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
-		ROS_DEBUG("Copied current qpos state");
+		RCLCPP_DEBUG(node_->get_logger(), "Copied current qpos state");
 		mj_setConst(model_.get(), data_.get());
-		ROS_DEBUG("Reset constants");
+		RCLCPP_DEBUG(node_->get_logger(), "Reset constants");
 		mju_copy(data_->qpos, qpos_tmp, model_->nq);
-		ROS_DEBUG("Copied qpos state back to data");
+		RCLCPP_DEBUG(node_->get_logger(), "Copied qpos state back to data");
 	}
 
 	notifyGeomChanged(geom_id);
@@ -625,7 +625,7 @@ bool MujocoEnv::getGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
                                     std::shared_ptr<mujoco_ros_msgs::srv::GetGeomProperties::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to get geom properties!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to get geom properties!");
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to get geom properties!");
 		resp->success = false;
@@ -635,7 +635,7 @@ bool MujocoEnv::getGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 	int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req->geom_name.c_str());
 	if (geom_id == -1) {
 		std::string error_msg("Could not find model (mujoco geom) with name " + req->geom_name);
-		ROS_WARN_STREAM(error_msg);
+		RCLCPP_WARN_STREAM(node_->get_logger(), error_msg);
 		resp->status_message = error_msg;
 		resp->success        = false;
 		return true;
@@ -667,10 +667,10 @@ bool MujocoEnv::getGeomPropertiesCB(const std::shared_ptr<mujoco_ros_msgs::srv::
 bool MujocoEnv::setEqualityConstraintParameters(const mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters)
 {
 	// look up equality constraint by name
-	ROS_DEBUG_STREAM("Looking up eqc by name '" << parameters.name << "'");
+	RCLCPP_DEBUG_STREAM(node_->get_logger(), "Looking up eqc by name '" << parameters.name << "'");
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, parameters.name.c_str());
 	if (eq_id != -1) {
-		ROS_DEBUG_STREAM("Found eqc by name '" << parameters.name << "'");
+		RCLCPP_DEBUG_STREAM(node_->get_logger(), "Found eqc by name '" << parameters.name << "'");
 		int id1, id2;
 		switch (parameters.type.value) {
 			case mjEQ_TENDON:
@@ -759,7 +759,7 @@ bool MujocoEnv::setEqualityConstraintParameters(const mujoco_ros_msgs::msg::Equa
 		model_->eq_solref[eq_id * mjNREF + 1] = parameters.solverParameters.dampratio;
 		return true;
 	}
-	ROS_WARN_STREAM("Could not find specified equality constraint with name '" << parameters.name << "'");
+	RCLCPP_WARN_STREAM(node_->get_logger(), "Could not find specified equality constraint with name '" << parameters.name << "'");
 	return false;
 }
 
@@ -767,7 +767,7 @@ bool MujocoEnv::setEqualityConstraintParametersArrayCB(const std::shared_ptr<muj
                                                        std::shared_ptr<mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to set equality constraints!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to set equality constraints!");
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to set equality constraints!");
 		resp->success = false;
@@ -796,11 +796,11 @@ bool MujocoEnv::setEqualityConstraintParametersArrayCB(const std::shared_ptr<muj
 
 bool MujocoEnv::getEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters)
 {
-	ROS_DEBUG_STREAM("Looking up Eq Constraint '" << parameters.name << "'");
+	RCLCPP_DEBUG_STREAM(node_->get_logger(), "Looking up Eq Constraint '" << parameters.name << "'");
 	// look up equality constraint by name
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, parameters.name.c_str());
 	if (eq_id != -1) {
-		ROS_DEBUG("Found Eq Constraint");
+		RCLCPP_DEBUG(node_->get_logger(), "Found Eq Constraint");
 		parameters.type.value = model_->eq_type[eq_id];
 
 		std::vector<float> polycoef = std::vector<float>(5);
@@ -860,7 +860,7 @@ bool MujocoEnv::getEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityCo
 		parameters.solverParameters.dampratio = model_->eq_solref[eq_id * mjNREF + 1];
 		return true;
 	}
-	ROS_WARN_STREAM("Could not find equality constraint named '" << parameters.name << "'");
+	RCLCPP_WARN_STREAM(node_->get_logger(), "Could not find equality constraint named '" << parameters.name << "'");
 	return false;
 }
 
@@ -868,7 +868,7 @@ bool MujocoEnv::getEqualityConstraintParametersArrayCB(const std::shared_ptr<muj
                                                        std::shared_ptr<mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to get equality constraints!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to get equality constraints!");
 		resp->status_message =
 		    static_cast<decltype(resp->status_message)>("Hash mismatch, no permission to get equality constraints!");
 		resp->success = false;
@@ -955,7 +955,7 @@ float findClosestRecursive(const float arr[], uint left, uint right, float targe
 bool MujocoEnv::setRTFactorCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetFloat::Request> req, std::shared_ptr<mujoco_ros_msgs::srv::SetFloat::Response> resp)
 {
 	if (!verifyAdminHash(req->admin_hash)) {
-		ROS_ERROR("Hash mismatch, no permission to set real-time factor!");
+		RCLCPP_ERROR(node_->get_logger(), "Hash mismatch, no permission to set real-time factor!");
 		resp->success = false;
 		return true;
 	}
@@ -975,7 +975,7 @@ bool MujocoEnv::setRTFactorCB(const std::shared_ptr<mujoco_ros_msgs::srv::SetFlo
 	                         100.f * static_cast<float>(req->value)); // start at 1 to not go to unbound mode if the value
 	                                                                 // is too small (already handled above)
 
-	ROS_WARN_STREAM_COND(fabs(closest / 100.f - static_cast<float>(req->value)) > 0.001f,
+	RCLCPP_WARN_STREAM_EXPRESSION(node_->get_logger(), fabs(closest / 100.f - static_cast<float>(req->value)) > 0.001f,
 	                     "Requested factor '" << req->value
 	                                          << "' not available, setting to closest available: " << closest / 100.f);
 
